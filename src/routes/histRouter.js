@@ -152,8 +152,8 @@ router.post('/hist/transacoes', async (req, res) => {
  *         name: idUser
  *         schema:
  *           type: string
- *         required: false
- *         description: ID do usuário (se não informado, retorna de todos)
+ *         required: true
+ *         description: ID do usuário
  *       - in: query
  *         name: start
  *         schema:
@@ -171,42 +171,48 @@ router.post('/hist/transacoes', async (req, res) => {
  *     responses:
  *       200:
  *         description: Histórico retornado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       idUser:
+ *                         type: string
+ *                       points:
+ *                         type: number
+ *                       description:
+ *                         type: string
+ *                       date:
+ *                         type: string
+ *                       tipo:
+ *                         type: string
+ *                         description: "ponto" ou "transacao"
  */
-router.get('/hist/:idUser?', async (req, res) => {
+router.get('/hist/:idUser', async (req, res) => {
   try {
     const { idUser } = req.params;
     const { start, end } = req.query;
-
     const startDateTime = start ? `${start} 00:00:00` : '1970-01-01 00:00:00';
     const endDateTime = end ? `${end} 23:59:59` : '2999-12-31 23:59:59';
 
-    let pointsHistory, transactionsHistory;
+    let [pointsHistory] = await promisePool.execute(
+      `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
+       WHERE idUser = ? AND date BETWEEN ? AND ?`,
+      [idUser, startDateTime, endDateTime]
+    );
 
-    if (idUser) {
-      [pointsHistory] = await promisePool.execute(
-        `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
-         WHERE idUser = ? AND date BETWEEN ? AND ?`,
-        [idUser, startDateTime, endDateTime]
-      );
-
-      [transactionsHistory] = await promisePool.execute(
-        `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
-         WHERE idUser = ? AND date BETWEEN ? AND ?`,
-        [idUser, startDateTime, endDateTime]
-      );
-    } else {
-      [pointsHistory] = await promisePool.execute(
-        `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
-         WHERE date BETWEEN ? AND ?`,
-        [startDateTime, endDateTime]
-      );
-
-      [transactionsHistory] = await promisePool.execute(
-        `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
-         WHERE date BETWEEN ? AND ?`,
-        [startDateTime, endDateTime]
-      );
-    }
+    let [transactionsHistory] = await promisePool.execute(
+      `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
+       WHERE idUser = ? AND date BETWEEN ? AND ?`,
+      [idUser, startDateTime, endDateTime]
+    );
 
     function formatDateToBrazil(date) {
       return new Date(date).toLocaleString('pt-BR');
@@ -219,28 +225,16 @@ router.get('/hist/:idUser?', async (req, res) => {
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    let result;
-    if (idUser) {
-      result = history;
-    } else {
-      // Agrupa por idUser
-      result = history.reduce((acc, item) => {
-        if (!acc[item.idUser]) acc[item.idUser] = [];
-        acc[item.idUser].push(item);
-        return acc;
-      }, {});
-    }
-
     logger.info({
       message: 'Histórico consultado',
-      idUser: idUser || 'todos',
+      idUser,
       startDateTime,
       endDateTime,
       quantidade: history.length,
       rota: '/hist/:idUser'
     });
 
-    res.json({ history: result });
+    res.json({ history });
   } catch (error) {
     logger.error({
       message: 'Erro ao buscar histórico',
@@ -251,4 +245,113 @@ router.get('/hist/:idUser?', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar histórico.', details: error.message });
   }
 });
+
+
+/**
+ * @swagger
+ * /hist:
+ *   get:
+ *     summary: Retorna o histórico de pontos e transações de todos os usuários, agrupado por idUser, filtrado por data
+ *     tags: [Histórico]
+ *     parameters:
+ *       - in: query
+ *         name: start
+ *         schema:
+ *           type: string
+ *           format: date
+ *         required: false
+ *         description: Data inicial (YYYY-MM-DD)
+ *       - in: query
+ *         name: end
+ *         schema:
+ *           type: string
+ *           format: date
+ *         required: false
+ *         description: Data final (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: Histórico retornado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 history:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         idUser:
+ *                           type: string
+ *                         points:
+ *                           type: number
+ *                         description:
+ *                           type: string
+ *                         date:
+ *                           type: string
+ *                         tipo:
+ *                           type: string
+ *                           description: "ponto" ou "transacao"
+ */
+router.get('/hist', async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const startDateTime = start ? `${start} 00:00:00` : '1970-01-01 00:00:00';
+    const endDateTime = end ? `${end} 23:59:59` : '2999-12-31 23:59:59';
+
+    let [pointsHistory] = await promisePool.execute(
+      `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
+       WHERE date BETWEEN ? AND ?`,
+      [startDateTime, endDateTime]
+    );
+
+    let [transactionsHistory] = await promisePool.execute(
+      `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
+       WHERE date BETWEEN ? AND ?`,
+      [startDateTime, endDateTime]
+    );
+
+    function formatDateToBrazil(date) {
+      return new Date(date).toLocaleString('pt-BR');
+    }
+
+    const history = [...pointsHistory, ...transactionsHistory]
+      .map(item => ({
+        ...item,
+        date: formatDateToBrazil(item.date),
+      }))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Agrupa por idUser
+    const result = history.reduce((acc, item) => {
+      if (!acc[item.idUser]) acc[item.idUser] = [];
+      acc[item.idUser].push(item);
+      return acc;
+    }, {});
+
+    logger.info({
+      message: 'Histórico consultado',
+      idUser: 'todos',
+      startDateTime,
+      endDateTime,
+      quantidade: history.length,
+      rota: '/hist'
+    });
+
+    res.json({ history: result });
+  } catch (error) {
+    logger.error({
+      message: 'Erro ao buscar histórico',
+      error: error.message,
+      stack: error.stack,
+      rota: '/hist'
+    });
+    res.status(500).json({ error: 'Erro ao buscar histórico.', details: error.message });
+  }
+});
+
 module.exports = router;
