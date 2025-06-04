@@ -193,7 +193,7 @@ router.post('/hist/transacoes', async (req, res) => {
  *                         type: string
  *                       tipo:
  *                         type: string
- *                         description: "ponto" ou "transacao"
+ *                         description: "ponto ou transacao"
  */
 router.get('/hist/:idUser', async (req, res) => {
   try {
