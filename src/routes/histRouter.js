@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { promisePool } = require('../db/db'); 
+const logger = require('../config/logger');
 
 
 
@@ -42,6 +43,11 @@ router.post('/hist/pontos', async (req, res) => {
     const { id, idUser, points } = req.body;
 
     if (!id || !idUser || !points) {
+      logger.warn({
+        message: 'Campos obrigatórios ausentes em /hist/pontos',
+        body: req.body,
+        rota: '/hist/pontos'
+      });
       return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
     }
 
@@ -53,8 +59,20 @@ router.post('/hist/pontos', async (req, res) => {
     `;
     await promisePool.execute(query, [id, points, idUser, brazilDate]);
 
+    logger.info({
+      message: 'Histórico de pontos registrado',
+      id, idUser, points, date: brazilDate,
+      rota: '/hist/pontos'
+    });
+
     res.status(201).json({ message: 'Histórico de pontos registrado com sucesso.' });
   } catch (error) {
+    logger.error({
+      message: 'Erro ao registrar histórico de pontos',
+      error: error.message,
+      stack: error.stack,
+      rota: '/hist/pontos'
+    });
     res.status(500).json({ error: 'Erro ao registrar histórico de pontos.', details: error.message });
   }
 });
@@ -88,6 +106,11 @@ router.post('/hist/transacoes', async (req, res) => {
     const { idUser, description, points } = req.body;
 
     if (!idUser || !description || !points) {
+      logger.warn({
+        message: 'Campos obrigatórios ausentes em /hist/transacoes',
+        body: req.body,
+        rota: '/hist/transacoes'
+      });
       return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
     }
 
@@ -99,8 +122,20 @@ router.post('/hist/transacoes', async (req, res) => {
     `;
     await promisePool.execute(query, [description, points, idUser, brazilDate]);
 
+    logger.info({
+      message: 'Histórico de transação registrado',
+      idUser, description, points, date: brazilDate,
+      rota: '/hist/transacoes'
+    });
+
     res.status(201).json({ message: 'Histórico de transação registrado com sucesso.' });
   } catch (error) {
+    logger.error({
+      message: 'Erro ao registrar transação',
+      error: error.message,
+      stack: error.stack,
+      rota: '/hist/transacoes'
+    });
     res.status(500).json({ error: 'Erro ao registrar transação.', details: error.message });
   }
 });
@@ -168,10 +203,24 @@ router.get('/hist/:idUser', async (req, res) => {
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    logger.info({
+      message: 'Histórico consultado',
+      idUser,
+      startDateTime,
+      endDateTime,
+      quantidade: history.length,
+      rota: '/hist/:idUser'
+    });
+
     res.json({ history });
   } catch (error) {
+    logger.error({
+      message: 'Erro ao buscar histórico',
+      error: error.message,
+      stack: error.stack,
+      rota: '/hist/:idUser'
+    });
     res.status(500).json({ error: 'Erro ao buscar histórico.', details: error.message });
   }
 });
-
 module.exports = router;
