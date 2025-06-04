@@ -4,7 +4,7 @@ require('winston-cloudwatch');
 const cloudWatchConfig = {
   logGroupName: 'BackMysqlAWS-Logs',
   logStreamName: 'API-Routes',
-  awsRegion: 'us-east-1', // ajuste para sua região
+  awsRegion: 'us-east-1', 
   jsonMessage: true,
 };
 

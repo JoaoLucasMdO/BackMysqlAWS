@@ -152,8 +152,8 @@ router.post('/hist/transacoes', async (req, res) => {
  *         name: idUser
  *         schema:
  *           type: string
- *         required: true
- *         description: ID do usuário
+ *         required: false
+ *         description: ID do usuário (se não informado, retorna de todos)
  *       - in: query
  *         name: start
  *         schema:
@@ -172,7 +172,7 @@ router.post('/hist/transacoes', async (req, res) => {
  *       200:
  *         description: Histórico retornado com sucesso
  */
-router.get('/hist/:idUser', async (req, res) => {
+router.get('/hist/:idUser?', async (req, res) => {
   try {
     const { idUser } = req.params;
     const { start, end } = req.query;
@@ -180,17 +180,33 @@ router.get('/hist/:idUser', async (req, res) => {
     const startDateTime = start ? `${start} 00:00:00` : '1970-01-01 00:00:00';
     const endDateTime = end ? `${end} 23:59:59` : '2999-12-31 23:59:59';
 
-    const [pointsHistory] = await promisePool.execute(
-      `SELECT id, points, date, 'ponto' AS tipo FROM histPoints 
-       WHERE idUser = ? AND date BETWEEN ? AND ?`,
-      [idUser, startDateTime, endDateTime]
-    );
+    let pointsHistory, transactionsHistory;
 
-    const [transactionsHistory] = await promisePool.execute(
-      `SELECT id, description, points, date, 'transacao' AS tipo FROM histTransactions 
-       WHERE idUser = ? AND date BETWEEN ? AND ?`,
-      [idUser, startDateTime, endDateTime]
-    );
+    if (idUser) {
+      [pointsHistory] = await promisePool.execute(
+        `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
+         WHERE idUser = ? AND date BETWEEN ? AND ?`,
+        [idUser, startDateTime, endDateTime]
+      );
+
+      [transactionsHistory] = await promisePool.execute(
+        `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
+         WHERE idUser = ? AND date BETWEEN ? AND ?`,
+        [idUser, startDateTime, endDateTime]
+      );
+    } else {
+      [pointsHistory] = await promisePool.execute(
+        `SELECT id, idUser, points, date, 'ponto' AS tipo FROM histPoints 
+         WHERE date BETWEEN ? AND ?`,
+        [startDateTime, endDateTime]
+      );
+
+      [transactionsHistory] = await promisePool.execute(
+        `SELECT id, idUser, description, points, date, 'transacao' AS tipo FROM histTransactions 
+         WHERE date BETWEEN ? AND ?`,
+        [startDateTime, endDateTime]
+      );
+    }
 
     function formatDateToBrazil(date) {
       return new Date(date).toLocaleString('pt-BR');
@@ -203,16 +219,28 @@ router.get('/hist/:idUser', async (req, res) => {
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    let result;
+    if (idUser) {
+      result = history;
+    } else {
+      // Agrupa por idUser
+      result = history.reduce((acc, item) => {
+        if (!acc[item.idUser]) acc[item.idUser] = [];
+        acc[item.idUser].push(item);
+        return acc;
+      }, {});
+    }
+
     logger.info({
       message: 'Histórico consultado',
-      idUser,
+      idUser: idUser || 'todos',
       startDateTime,
       endDateTime,
       quantidade: history.length,
       rota: '/hist/:idUser'
     });
 
-    res.json({ history });
+    res.json({ history: result });
   } catch (error) {
     logger.error({
       message: 'Erro ao buscar histórico',
