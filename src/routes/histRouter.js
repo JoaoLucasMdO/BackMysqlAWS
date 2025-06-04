@@ -158,7 +158,7 @@ router.get('/hist/:idUser', async (req, res) => {
     );
 
     function formatDateToBrazil(date) {
-      return new Date(date).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      return new Date(date).toLocaleString('pt-BR');
     }
 
     const history = [...pointsHistory, ...transactionsHistory]
